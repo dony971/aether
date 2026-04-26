@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+
+# Data
+/data/
+data*/
+*.db
+*.sled
+
+# Logs
+*.log
+node_output.log
+node_error.log
+
+# Wallets
+wallet*.json
+gui_wallet.json
+my_wallet.json
+wallet2.json
+wallet_A.json
+wallet_B.json
+founder_keys.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
