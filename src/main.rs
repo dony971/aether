@@ -32,11 +32,26 @@ async fn sync_save_ledger(ledger: Arc<RwLock<aether_unified::ledger::Ledger>>, l
     }).await.ok();
 }
 
-/// Parse bootnode address from either IP:PORT or multiaddr format
+/// Parse bootnode address from either IP:PORT, DOMAIN:PORT, or multiaddr format
 fn parse_bootnode_address(addr_str: &str) -> Result<SocketAddr, Box<dyn std::error::Error>> {
     // Try standard IP:PORT format first
     if let Ok(addr) = addr_str.parse::<SocketAddr>() {
         return Ok(addr);
+    }
+
+    // Try DOMAIN:PORT format (e.g., 0.tcp.eu.ngrok.io:10979)
+    if addr_str.contains(':') && !addr_str.starts_with('/') {
+        let parts: Vec<&str> = addr_str.split(':').collect();
+        if parts.len() == 2 {
+            let domain = parts[0];
+            let port = parts[1].parse::<u16>()?;
+            // Resolve domain to IP
+            if let Ok(mut ips) = std::net::ToSocketAddrs::to_socket_addrs(&format!("{}:{}", domain, port)) {
+                if let Some(addr) = ips.next() {
+                    return Ok(addr);
+                }
+            }
+        }
     }
 
     // Try multiaddr format: /ip4/127.0.0.1/tcp/30333
@@ -52,7 +67,7 @@ fn parse_bootnode_address(addr_str: &str) -> Result<SocketAddr, Box<dyn std::err
         }
     }
 
-    Err(format!("Invalid bootnode address format: {}. Use IP:PORT or /ip4/IP/tcp/PORT", addr_str).into())
+    Err(format!("Invalid bootnode address format: {}. Use IP:PORT, DOMAIN:PORT, or /ip4/IP/tcp/PORT", addr_str).into())
 }
 
 #[tokio::main]
