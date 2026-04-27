@@ -1,6 +1,10 @@
 use eframe::egui;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
+use aether_unified::wallet::Wallet;
+use aether_unified::transaction::Transaction;
+use ed25519_dalek::SigningKey;
+use hex;
 
 #[derive(Serialize, Deserialize)]
 struct RpcRequest {
@@ -59,7 +63,9 @@ impl RpcClient {
 
 struct AetherGui {
     rpc_client: RpcClient,
+    wallet: Option<Wallet>,
     address: String,
+    private_key: String,
     balance_result: String,
     faucet_result: String,
     dag_stats_result: String,
@@ -69,13 +75,16 @@ struct AetherGui {
     amount: String,
     tx_hex: String,
     connected: bool,
+    show_private_key: bool,
 }
 
 impl AetherGui {
     fn new() -> Self {
         Self {
             rpc_client: RpcClient::new("http://localhost:9933".to_string()),
-            address: "18a0c5f75ce4e0ffe94344cd73ff1ad85b16a2531a29f5d49463b63b8b8e7bf8".to_string(),
+            wallet: None,
+            address: String::new(),
+            private_key: String::new(),
             balance_result: String::new(),
             faucet_result: String::new(),
             dag_stats_result: String::new(),
@@ -85,6 +94,7 @@ impl AetherGui {
             amount: String::new(),
             tx_hex: String::new(),
             connected: false,
+            show_private_key: false,
         }
     }
 }
@@ -114,9 +124,56 @@ impl eframe::App for AetherGui {
 
             // Wallet Section
             ui.heading("💰 Wallet");
+            
+            if ui.button("Create New Wallet").clicked() {
+                let wallet = Wallet::new();
+                self.wallet = Some(wallet.clone());
+                self.address = hex::encode(wallet.address());
+                self.private_key = wallet.secret_key_hex.clone();
+                self.balance_result = "Wallet created! Save your private key!".to_string();
+            }
+            
+            if ui.button("Load from Private Key").clicked() {
+                if !self.private_key.is_empty() {
+                    match hex::decode(&self.private_key) {
+                        Ok(key_bytes) if key_bytes.len() == 32 => {
+                            let mut secret_key_bytes = [0u8; 32];
+                            secret_key_bytes.copy_from_slice(&key_bytes);
+                            let signing_key = SigningKey::from_bytes(&secret_key_bytes);
+                            let verifying_key = signing_key.verifying_key();
+                            let wallet = Wallet {
+                                public_key_hex: hex::encode(verifying_key.to_bytes()),
+                                secret_key_hex: self.private_key.clone(),
+                                mnemonic: None,
+                            };
+                            self.wallet = Some(wallet.clone());
+                            self.address = hex::encode(wallet.address());
+                            self.balance_result = "Wallet loaded successfully!".to_string();
+                        }
+                        _ => {
+                            self.balance_result = "Invalid private key".to_string();
+                        }
+                    }
+                }
+            }
+            
+            ui.separator();
+            
             ui.horizontal(|ui| {
                 ui.label("Address:");
                 ui.text_edit_singleline(&mut self.address);
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("Private Key:");
+                if self.show_private_key {
+                    ui.text_edit_singleline(&mut self.private_key);
+                } else {
+                    ui.label("••••••••••••••••••••••••••••••••");
+                }
+                if ui.button(if self.show_private_key { "Hide" } else { "Show" }).clicked() {
+                    self.show_private_key = !self.show_private_key;
+                }
             });
             
             if ui.button("Get Balance").clicked() {
@@ -169,9 +226,83 @@ impl eframe::App for AetherGui {
                 ui.label("Amount (AETH):");
                 ui.text_edit_singleline(&mut self.amount);
             });
+            
+            if ui.button("Create & Sign Transaction").clicked() {
+                if let Some(ref wallet) = self.wallet {
+                    if !self.recipient.is_empty() && !self.amount.is_empty() {
+                        let amount: u64 = self.amount.parse().unwrap_or(0);
+                        let recipient: [u8; 32] = match hex::decode(&self.recipient) {
+                            Ok(bytes) if bytes.len() == 32 => {
+                                let mut arr = [0u8; 32];
+                                arr.copy_from_slice(&bytes);
+                                arr
+                            }
+                            _ => {
+                                self.tx_result = "Invalid recipient address".to_string();
+                                return;
+                            }
+                        };
+                        
+                        let sender: [u8; 32] = match hex::decode(&self.address) {
+                            Ok(bytes) if bytes.len() == 32 => {
+                                let mut arr = [0u8; 32];
+                                arr.copy_from_slice(&bytes);
+                                arr
+                            }
+                            _ => {
+                                self.tx_result = "Invalid sender address".to_string();
+                                return;
+                            }
+                        };
+                        
+                        let parents = [[0u8; 32]; 2]; // Genesis parents
+                        let tx = Transaction::new(
+                            parents,
+                            sender,
+                            recipient,
+                            amount,
+                            1, // fee
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                            0,
+                            1, // nonce
+                            vec![0u8; 64], // signature (will be filled)
+                            wallet.public_key_bytes(),
+                        );
+                        
+                        let signed_tx = wallet.sign_transaction(&tx);
+                        match signed_tx {
+                            Ok(signed) => {
+                                // Use bincode to serialize
+                                match bincode::serialize(&signed) {
+                                    Ok(bytes) => {
+                                        self.tx_hex = hex::encode(&bytes);
+                                        self.tx_result = "Transaction created and signed!".to_string();
+                                    }
+                                    Err(e) => {
+                                        self.tx_result = format!("Error serializing transaction: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.tx_result = format!("Error signing transaction: {}", e);
+                            }
+                        }
+                    } else {
+                        self.tx_result = "Please enter recipient and amount".to_string();
+                    }
+                } else {
+                    self.tx_result = "Please create or load a wallet first".to_string();
+                }
+            }
+            
+            ui.separator();
+            
             ui.horizontal(|ui| {
                 ui.label("TX Hex:");
-                ui.text_edit_singleline(&mut self.tx_hex);
+                ui.text_edit_multiline(&mut self.tx_hex);
             });
             
             if ui.button("Send Transaction").clicked() {
