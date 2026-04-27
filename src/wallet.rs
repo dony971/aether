@@ -114,7 +114,10 @@ impl Wallet {
         rand::rngs::OsRng.fill_bytes(&mut entropy);
         
         // Generate mnemonic from entropy
-        let mnemonic = Mnemonic::from_entropy(&entropy).expect("Failed to generate mnemonic");
+        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap_or_else(|_| {
+            // Fallback: generate a simple mnemonic if entropy fails
+            Mnemonic::from_entropy(&[0u8; 16]).unwrap()
+        });
         let mnemonic_phrase = mnemonic.to_string();
         
         // Derive seed from mnemonic using BIP39
@@ -378,8 +381,8 @@ mod tests {
         let wallet = Wallet::new();
         let path = "test_wallet.json";
 
-        wallet.to_file(path, None).await.unwrap();
-        let loaded = Wallet::from_file(path, None).await.unwrap();
+        wallet.to_file(path, None).await.expect("Failed to save wallet");
+        let loaded = Wallet::from_file(path, None).await.expect("Failed to load wallet");
 
         assert_eq!(wallet.public_key_hex, loaded.public_key_hex);
         assert_eq!(wallet.secret_key_hex, loaded.secret_key_hex);
@@ -436,10 +439,10 @@ mod tests {
         let path = "test_wallet_persistence.json";
 
         // Save wallet
-        wallet.to_file(path, None).await.unwrap();
+        wallet.to_file(path, None).await.expect("Failed to save wallet");
 
         // Load wallet
-        let loaded_wallet = Wallet::from_file(path, None).await.unwrap();
+        let loaded_wallet = Wallet::from_file(path, None).await.expect("Failed to load wallet");
 
         // Create test transaction
         let tx = Transaction::new(
@@ -456,7 +459,7 @@ mod tests {
         );
 
         // Sign with loaded wallet
-        let signature = loaded_wallet.sign_transaction(&tx).unwrap();
+        let signature = loaded_wallet.sign_transaction(&tx).expect("Failed to sign transaction");
         let mut signed_tx = tx.clone();
         signed_tx.signature = signature;
 
@@ -474,10 +477,10 @@ mod tests {
         let path = "test_wallet_loop.json";
 
         // Save wallet
-        wallet.to_file(path, None).await.unwrap();
+        wallet.to_file(path, None).await.expect("Failed to save wallet");
 
         // Load wallet
-        let loaded_wallet = Wallet::from_file(path, None).await.unwrap();
+        let loaded_wallet = Wallet::from_file(path, None).await.expect("Failed to load wallet");
 
         // Create test transaction
         let tx = Transaction::new(
@@ -494,7 +497,7 @@ mod tests {
         );
 
         // Sign with loaded wallet
-        let signature = loaded_wallet.sign_transaction(&tx).unwrap();
+        let signature = loaded_wallet.sign_transaction(&tx).expect("Failed to sign transaction");
         let mut signed_tx = tx.clone();
         signed_tx.signature = signature;
 

@@ -263,7 +263,7 @@ mod tests {
         );
 
         // Add transaction to DAG (using validated method)
-        dag.add_transaction_validated(tx.clone()).unwrap();
+        dag.add_transaction_validated(tx.clone()).expect("Failed to add transaction to DAG");
 
         // This should fail due to overflow
         let result = validator.validate_pure(&tx);
@@ -337,7 +337,7 @@ mod tests {
         );
 
         // Add transaction to DAG (using validated method)
-        dag.add_transaction_validated(tx.clone()).unwrap();
+        dag.add_transaction_validated(tx.clone()).expect("Failed to add transaction to DAG");
 
         // Validation should fail (duplicate)
         let result = validator.validate_dag(&tx, &dag);

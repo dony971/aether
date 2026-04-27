@@ -585,7 +585,7 @@ mod tests {
     fn test_sender_public_key_match_valid() {
         // Valid case: sender matches public_key (first 32 bytes)
         let public_key = vec![1u8; 64];
-        let sender: [u8; 32] = public_key[..32].try_into().unwrap();
+        let sender: [u8; 32] = public_key[..32].try_into().expect("Failed to convert public key to sender");
         
         let tx = Transaction::new(
             [[0u8; 32]; 2],
