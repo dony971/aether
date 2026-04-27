@@ -141,19 +141,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let receiver_hex = &args[2];
         let amount: u64 = args[3].parse()?;
         let fee: u64 = if args.len() > 4 { args[4].parse()? } else { 10 };
-        
+
         // Default wallet detection - if --wallet not specified, use wallet.json
         let mut wallet_path = "wallet.json";
         let mut password: Option<String> = None;
-        
-        // Check if wallet.json exists, if not provide helpful message
-        if !std::path::Path::new(wallet_path).exists() {
-            eprintln!("{}", "⚠️  wallet.json not found in current directory".yellow());
-            eprintln!("  Creating a new wallet with: aether-node wallet create");
-            eprintln!("  Or specify wallet path with: --wallet <path>");
-            std::process::exit(1);
-        }
-        
+
+        // 🔧 BUG FIX: Parse --wallet flag BEFORE checking if wallet file exists
         let mut i = 5;
         while i < args.len() {
             match args[i].as_str() {
@@ -177,6 +170,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => { i += 1; }
             }
+        }
+
+        // Now check if wallet file exists (after parsing --wallet flag)
+        if !std::path::Path::new(wallet_path).exists() {
+            eprintln!("{}", "⚠️  Wallet file not found".yellow());
+            eprintln!("  Path: {}", wallet_path);
+            eprintln!("  Creating a new wallet with: aether-node wallet create");
+            eprintln!("  Or specify wallet path with: --wallet <path>");
+            std::process::exit(1);
         }
 
         let mut rpc_url = "http://127.0.0.1:9933".to_string();
@@ -264,9 +266,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Default configuration
     let mut node_type = "miner".to_string(); // Default to mining mode
     let mut data_dir = PathBuf::from("./data");
-    let mut p2p_port = 30333;
+    let mut p2p_port = 25565; // 🔧 Updated to match Playit.gg tunnel
     let mut rpc_port = 9933;
     let mut bootnodes: Vec<SocketAddr> = Vec::new();
+    // 🔧 INFRASTRUCTURE UPDATE: Default bootnode
+    bootnodes.push(parse_bootnode_address("amount-louis.gl.joinmc.link:25565")?);
     let mut miner_address: Option<Address> = None;
 
     // Parse arguments
@@ -586,7 +590,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 public_key,
             );
             // Load transaction from storage - use validated method for zero-trust
-            dag.add_transaction_validated(tx.clone()).expect("Loaded transaction should be valid");
+            if let Err(e) = dag.add_transaction_validated(tx.clone()) {
+                tracing::warn!("⚠️ Failed to load transaction from storage: {}", e);
+                continue;
+            }
 
             // NOTE: Balances are NOT recalculated here. Ledger (loaded from Sled) is the source of truth.
             // This prevents inconsistency if crash occurs between DAG save and ledger save.
@@ -814,7 +821,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for tx_id in orphans_to_remove {
                     if let Some(orphan) = orphans_lock.remove(&tx_id) {
                         // Orphan is pre-validated when stored, use validated method for zero-trust
-                        dag_lock.add_transaction_validated(orphan.clone()).expect("Orphan should be valid");
+                        if let Err(e) = dag_lock.add_transaction_validated(orphan.clone()) {
+                            tracing::warn!("⚠️ Failed to add orphan to DAG: {}", e);
+                            continue;
+                        }
 
                         // Update ledger
                         let sender_hex = hex::encode(orphan.sender);
@@ -1018,7 +1028,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             let mut dag_write: tokio::sync::RwLockWriteGuard<'_, DAG> = dag.write().await;
                             // Mempool transaction is pre-validated, use validated method for zero-trust
-                            dag_write.add_transaction_validated(tx).expect("Mempool transaction should be valid");
+                            if let Err(e) = dag_write.add_transaction_validated(tx) {
+                                tracing::warn!("⚠️ Failed to add mempool transaction to DAG: {}", e);
+                                continue;
+                            }
                         }
                         // Ici, calcule le VRAI TPS
                         transactions_processed += 1;

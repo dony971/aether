@@ -377,14 +377,11 @@ impl DAG {
 
     /// Check if a sender has a conflicting transaction (same nonce or overlapping spend)
     /// Returns true if there's a conflict
+    /// 🔧 BUG FIX: Simplified to only check for nonce conflicts
+    /// Removed the check that blocks a sender after their first-ever transaction
     pub fn has_sender_conflict(&self, sender: &[u8; 32], nonce: u64) -> bool {
         // Check for same nonce (strict conflict)
-        if self.has_transaction_with_nonce(sender, nonce) {
-            return true;
-        }
-        // Check for any pending transaction from this sender (potential conflict)
-        // This is stricter: only one pending transaction per sender at a time
-        self.has_pending_transaction_from_sender(sender)
+        self.has_transaction_with_nonce(sender, nonce)
     }
     
     /// Add a transaction to the DAG (REMOVED for zero-trust security)

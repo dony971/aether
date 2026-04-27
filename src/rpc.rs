@@ -870,10 +870,8 @@ impl AetherRpcImpl {
         let miner_addr = self.miner_address.as_ref();
 
         // Get consensus state (single source of truth for block height)
-        let consensus = self.consensus.read().await;
-        let consensus_state = consensus.state().clone();
-        drop(consensus);
-
+        let mut consensus = self.consensus.write().await;
+        let consensus_state = consensus.state_mut();
         // Use transaction ID as block ID (in production, this should be the actual block ID from consensus)
         let block_id = Some(tx.id);
 
@@ -884,7 +882,7 @@ impl AetherRpcImpl {
             &self.mempool,
             min_fee,
             miner_addr,
-            &consensus_state,
+            consensus_state,
             block_id,
         ).await {
             Ok(_) => {

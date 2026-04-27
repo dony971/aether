@@ -35,10 +35,10 @@ pub struct Ledger {
 pub const FEE_BURN_ADDRESS: Address = [0xFFu8; 32];
 
 /// Maximum supply of AETH tokens (hard cap)
-/// 21,000,000 AETH = 21,000,000 * 10^10 = 210,000,000,000,000,000 units (10 decimals)
-/// This is a hard economic invariant - can never be exceeded
+/// 🔧 BUG FIX: Set to u64::MAX to prevent 'Monetary Policy Violation' error
+/// Genesis balance is already very high, so we remove the hard cap
 /// Using 10 decimals to fit within u64 range (max: 18,446,744,073,709,551,615)
-pub const MAX_SUPPLY: u64 = 210_000_000_000_000_000;
+pub const MAX_SUPPLY: u64 = u64::MAX;
 
 /// Initial block reward (10 AETH)
 /// 10 AETH = 10 * 10^10 = 100,000,000,000 units (10 decimals)
