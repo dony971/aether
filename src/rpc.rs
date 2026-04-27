@@ -762,8 +762,8 @@ impl AetherRpcImpl {
             }
         };
 
-        // Step 2: Parsing - Deserialize transaction using manual binary decoder
-        let tx: Transaction = match Transaction::deserialize(&tx_bytes) {
+        // Step 2: Parsing - Deserialize transaction using bincode (same format as GUI)
+        let tx: Transaction = match bincode::deserialize::<Transaction>(&tx_bytes) {
             Ok(transaction) => {
                 tracing::info!("✅ Parsing: Transaction désérialisée pour {}", hex::encode(transaction.sender));
                 transaction

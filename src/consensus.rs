@@ -140,9 +140,17 @@ impl ConsensusState {
     }
 
     /// Increment block height (only called on consensus confirmation)
+    /// In solo mode (no peers), this allows testing without network validation
     pub fn increment_height(&mut self) {
         self.current_height += 1;
         tracing::info!("🔗 CONSENSUS: Block height incremented to {}", self.current_height);
+    }
+
+    /// Allow solo validation mode for testing (no peers required)
+    /// This enables mining rewards even when no peers are connected
+    pub fn enable_solo_mode(&mut self) {
+        self.confirmation_threshold = 0; // No confirmations needed in solo mode
+        tracing::info!("🔓 SOLO MODE: Enabled - no peer validation required");
     }
 
     /// Check if reward already given for this height (DEPRECATED - use is_block_rewarded)

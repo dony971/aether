@@ -479,7 +479,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Reconstruct DAG from stored data
         let mut dag = DAG::new();
-        let consensus = VQVConsensus::new(100, 0.7, 5, 50);
+        let mut consensus = VQVConsensus::new(100, 0.7, 5, 50);
+        // Enable solo mode for testing (allows mining without peers)
+        consensus.state_mut().enable_solo_mode();
         let mut orphans: std::collections::HashMap<[u8; 32], aether_unified::transaction::Transaction> = std::collections::HashMap::new();
 
         // First, add all transactions (check for missing parents)
@@ -1163,10 +1165,57 @@ async fn send_transaction_client(
         }
     };
 
-    // Create transaction (using genesis as parents for simplicity)
+    // Fetch tips from RPC for proper parent selection
+    let tips_payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "aether_getTips",
+        "params": [],
+        "id": 2
+    });
+
+    let parents = match client
+        .post(rpc_url)
+        .json(&tips_payload)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            match response.json::<serde_json::Value>().await {
+                Ok(json) => {
+                    if let Some(result) = json.get("result") {
+                        if let Some(tips_data) = result.get("tips") {
+                            if let Some(tips_array) = tips_data.as_array() {
+                                let mut parent_ids = [[0u8; 32]; 2];
+                                for (i, tip) in tips_array.iter().take(2).enumerate() {
+                                    if let Some(tip_str) = tip.as_str() {
+                                        if let Ok(tip_bytes) = hex::decode(tip_str) {
+                                            if tip_bytes.len() == 32 {
+                                                parent_ids[i].copy_from_slice(&tip_bytes);
+                                            }
+                                        }
+                                    }
+                                }
+                                parent_ids
+                            } else {
+                                [[0u8; 32]; 2] // Fallback to genesis
+                            }
+                        } else {
+                            [[0u8; 32]; 2] // Fallback to genesis
+                        }
+                    } else {
+                        [[0u8; 32]; 2] // Fallback to genesis
+                    }
+                }
+                Err(_) => [[0u8; 32]; 2], // Fallback to genesis on parse error
+            }
+        }
+        Err(_) => [[0u8; 32]; 2], // Fallback to genesis on RPC error
+    };
+
+    // Create transaction with proper parents from DAG tips
     // Sender is already the first 32 bytes of public_key (matches GUI logic)
     let tx = Transaction::new(
-        [[0u8; 32]; 2], // Genesis parents
+        parents,
         sender_address,
         receiver_address,
         amount,

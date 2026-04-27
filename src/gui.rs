@@ -255,7 +255,32 @@ impl eframe::App for AetherGui {
                             }
                         };
                         
-                        let parents = [[0u8; 32]; 2]; // Genesis parents
+                        // Fetch tips from RPC for proper parent selection
+                        let parents = match self.rpc_client.call("aether_getTips", serde_json::json!([])) {
+                            Ok(response) => {
+                                if let Some(tips_data) = response.get("tips") {
+                                    if let Some(tips_array) = tips_data.as_array() {
+                                        let mut parent_ids = [[0u8; 32]; 2];
+                                        for (i, tip) in tips_array.iter().take(2).enumerate() {
+                                            if let Some(tip_str) = tip.as_str() {
+                                                if let Ok(tip_bytes) = hex::decode(tip_str) {
+                                                    if tip_bytes.len() == 32 {
+                                                        parent_ids[i].copy_from_slice(&tip_bytes);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        parent_ids
+                                    } else {
+                                        [[0u8; 32]; 2] // Fallback to genesis
+                                    }
+                                } else {
+                                    [[0u8; 32]; 2] // Fallback to genesis
+                                }
+                            }
+                            Err(_) => [[0u8; 32]; 2], // Fallback to genesis on RPC error
+                        };
+
                         let tx = Transaction::new(
                             parents,
                             sender,
