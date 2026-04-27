@@ -1,7 +1,6 @@
 use eframe::egui;
-use reqwest::Client;
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[derive(Serialize, Deserialize)]
 struct RpcRequest {
@@ -19,19 +18,19 @@ struct RpcResponse {
 
 #[derive(Clone)]
 struct RpcClient {
-    client: Arc<Client>,
+    client: Client,
     url: String,
 }
 
 impl RpcClient {
     fn new(url: String) -> Self {
         Self {
-            client: Arc::new(Client::new()),
+            client: Client::new(),
             url,
         }
     }
 
-    async fn call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
             method: method.to_string(),
@@ -44,12 +43,10 @@ impl RpcClient {
             .post(&self.url)
             .json(&request)
             .send()
-            .await
             .map_err(|e| format!("Failed to send request: {}", e))?;
 
         let rpc_response: RpcResponse = response
             .json()
-            .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
         if let Some(error) = rpc_response.error {
@@ -101,12 +98,10 @@ impl eframe::App for AetherGui {
             // Check connection status
             if ui.button("Check Connection").clicked() {
                 let client = self.rpc_client.clone();
-                let ctx = ctx.clone();
-                tokio::spawn(async move {
-                    let _result = client.call("aether_getMiningStatus", serde_json::json!([])).await;
-                    ctx.request_repaint();
-                });
-                self.connected = true;
+                match client.call("aether_getMiningStatus", serde_json::json!([])) {
+                    Ok(_) => self.connected = true,
+                    Err(_) => self.connected = false,
+                }
             }
 
             ui.label(if self.connected {
@@ -127,27 +122,19 @@ impl eframe::App for AetherGui {
             if ui.button("Get Balance").clicked() {
                 let client = self.rpc_client.clone();
                 let address = self.address.clone();
-                tokio::spawn(async move {
-                    let result = client.call("aether_getBalance", serde_json::json!([address])).await;
-                    match result {
-                        Ok(r) => println!("Balance: {}", serde_json::to_string_pretty(&r).unwrap()),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                });
-                self.balance_result = "Loading...".to_string();
+                match client.call("aether_getBalance", serde_json::json!([address])) {
+                    Ok(r) => self.balance_result = serde_json::to_string_pretty(&r).unwrap_or_else(|_| "Error parsing".to_string()),
+                    Err(e) => self.balance_result = format!("Error: {}", e),
+                }
             }
             
             if ui.button("Use Faucet").clicked() {
                 let client = self.rpc_client.clone();
                 let address = self.address.clone();
-                tokio::spawn(async move {
-                    let result = client.call("aether_faucet", serde_json::json!([address])).await;
-                    match result {
-                        Ok(r) => println!("Faucet: {}", serde_json::to_string_pretty(&r).unwrap()),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                });
-                self.faucet_result = "Loading...".to_string();
+                match client.call("aether_faucet", serde_json::json!([address])) {
+                    Ok(r) => self.faucet_result = serde_json::to_string_pretty(&r).unwrap_or_else(|_| "Error parsing".to_string()),
+                    Err(e) => self.faucet_result = format!("Error: {}", e),
+                }
             }
 
             ui.separator();
@@ -156,26 +143,18 @@ impl eframe::App for AetherGui {
             ui.heading("📊 Network Stats");
             if ui.button("Get DAG Stats").clicked() {
                 let client = self.rpc_client.clone();
-                tokio::spawn(async move {
-                    let result = client.call("aether_getDagStats", serde_json::json!([])).await;
-                    match result {
-                        Ok(r) => println!("DAG Stats: {}", serde_json::to_string_pretty(&r).unwrap()),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                });
-                self.dag_stats_result = "Loading...".to_string();
+                match client.call("aether_getDagStats", serde_json::json!([])) {
+                    Ok(r) => self.dag_stats_result = serde_json::to_string_pretty(&r).unwrap_or_else(|_| "Error parsing".to_string()),
+                    Err(e) => self.dag_stats_result = format!("Error: {}", e),
+                }
             }
             
             if ui.button("Get Mining Status").clicked() {
                 let client = self.rpc_client.clone();
-                tokio::spawn(async move {
-                    let result = client.call("aether_getMiningStatus", serde_json::json!([])).await;
-                    match result {
-                        Ok(r) => println!("Mining Status: {}", serde_json::to_string_pretty(&r).unwrap()),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                });
-                self.mining_status_result = "Loading...".to_string();
+                match client.call("aether_getMiningStatus", serde_json::json!([])) {
+                    Ok(r) => self.mining_status_result = serde_json::to_string_pretty(&r).unwrap_or_else(|_| "Error parsing".to_string()),
+                    Err(e) => self.mining_status_result = format!("Error: {}", e),
+                }
             }
 
             ui.separator();
@@ -198,14 +177,10 @@ impl eframe::App for AetherGui {
             if ui.button("Send Transaction").clicked() {
                 let client = self.rpc_client.clone();
                 let tx_hex = self.tx_hex.clone();
-                tokio::spawn(async move {
-                    let result = client.call("aether_sendTransaction", serde_json::json!([tx_hex])).await;
-                    match result {
-                        Ok(r) => println!("TX Result: {}", serde_json::to_string_pretty(&r).unwrap()),
-                        Err(e) => println!("Error: {}", e),
-                    }
-                });
-                self.tx_result = "Loading...".to_string();
+                match client.call("aether_sendTransaction", serde_json::json!([tx_hex])) {
+                    Ok(r) => self.tx_result = serde_json::to_string_pretty(&r).unwrap_or_else(|_| "Error parsing".to_string()),
+                    Err(e) => self.tx_result = format!("Error: {}", e),
+                }
             }
 
             ui.separator();
